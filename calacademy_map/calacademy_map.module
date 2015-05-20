@@ -1,0 +1,113 @@
+<?php
+
+/**
+ * Tell Drupal to also look for template files in the modules folder
+ * implements hook_theme_registry_alter
+ *
+ * @param $theme_registry
+ */
+function calacademy_map_theme_registry_alter(&$theme_registry) {
+  $path  = drupal_get_path('module', 'calacademy_map') . '/templates';
+  $theme_registry += drupal_find_theme_templates($theme_registry, '.tpl.php', $path);
+}
+
+/**
+ * Provide node tpl suggestions for the Services Teaser view mode
+ * @author grotter
+ *
+ */
+function calacademy_map_preprocess_field(&$vars) {
+  if ($vars['element']['#view_mode'] != 'services_teaser') return;
+  $vars['theme_hook_suggestions'][] = 'field__services_teaser__hero_region';
+}
+
+function calacademy_map_preprocess_node(&$vars) {
+  if ($vars['view_mode'] != 'services_teaser') return;
+  $vars['theme_hook_suggestions'][] = 'node__services_teaser';
+}
+
+/**
+ * Implements hook_services_request_postprocess_alter($controller, $args, &$result)
+ * Alter the detail field for locations to include relevant data about the referenced entity
+ * @author grotter
+ *
+ */
+function calacademy_map_services_request_postprocess_alter($controller, $args, &$result) {
+  if (!isset($controller['view info'])) return;
+
+  $viewInfo = $controller['view info'];
+
+  if (!isset($viewInfo['view_name']) || !isset($viewInfo['display_id'])) return;
+  
+  if ($viewInfo['view_name'] == 'event_list' && $viewInfo['display_id'] == 'today_service') {
+    array_walk($result, function ($obj) {
+      // set URL for events
+      if (!empty($obj->nid)) {
+        $obj->url = url('node/' . $obj->nid, array('absolute' => true));
+      }
+
+      // hero image
+      if (!empty($obj->image)) {
+        $imageUri = _calacademy_hero_token_get_image_uri($obj->image['value']);
+
+        if (getimagesize($imageUri) === FALSE) {
+          // invalid
+          unset($obj->image);
+        } else {
+          $imageSrc = image_style_url('manual_crop_square_460px', $imageUri);
+          $imageSrc = str_replace('manual_crop_square_460px/public/sites/default/files/youtube/', 'automatic_square_460px/public/youtube/', $imageSrc);
+
+          $obj->image = $imageSrc;  
+        }
+      }
+    });
+  }
+
+  // set details data for locations 
+  if ($viewInfo['view_name'] == 'map_data' && $viewInfo['display_id'] == 'locations') {
+    array_walk($result, function ($obj) {
+      if (!empty($obj->detail)) {
+        // see node--services-teaser.tpl.php
+        $obj->detail = json_decode($obj->detail);
+      }
+    });
+  }
+}
+
+function calacademy_map_preprocess_html(&$vars) {
+  if (request_path() != 'map') return;
+  $vars['minimalUI'] = true;
+}
+
+/**
+ * Override or insert variables into the page templates.
+ *
+ * @param $variables
+ *   An array of variables to pass to the theme template.
+ * @param $hook
+ *   The name of the template being rendered ("page" in this case.)
+ */
+function calacademy_map_preprocess_page(&$vars) {
+  if (request_path() != 'map') return;
+
+  $cssOptions = array('group' => CSS_THEME);
+
+  drupal_add_css(path_to_theme() . '/css/calacademy/page-map.css', $cssOptions);
+
+  $libPath = libraries_get_path('calacademy_map');
+  $modulePath = drupal_get_path('module', 'calacademy_map');
+
+  drupal_add_js('//maps.google.com/maps/api/js?v=3.17', 'external');
+  drupal_add_js($modulePath . '/js/jquery.easing.1.3.js');
+  drupal_add_js($modulePath . '/js/jquery.animaterotate.js');
+  drupal_add_js($libPath . '/calacademy_map_data.js');
+  drupal_add_js($libPath . '/calacademy_map_base.js');
+  drupal_add_js($modulePath . '/js/markerwithlabel_packed.js');
+  drupal_add_js($modulePath . '/js/jquery.scrollTo.min.js');
+  drupal_add_js($modulePath . '/js/idle-timer.min.js');
+  drupal_add_js($modulePath . '/js/calacademy_map_menu.js');
+  drupal_add_js($modulePath . '/js/calacademy_map_dock.js');
+  drupal_add_js($modulePath . '/js/calacademy_translate_modal.js');
+  drupal_add_js($modulePath . '/js/calacademy_map.js');
+  drupal_add_js('var myMap; jQuery(document).ready(function () { myMap = new CalAcademyMap(); });', 'inline');
+}
